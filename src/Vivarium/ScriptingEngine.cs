@@ -245,7 +245,9 @@ public sealed class ScriptingEngine
         // Use short namespace for well-known system types
         var ns = type.Namespace;
         if (ns != null && (ns.StartsWith("System.Collections") || ns == "System"))
-            baseName = baseName; // just the short name
+        {
+            // just use the short name for well-known system types
+        }
         else if (ns != null)
             baseName = ns + "." + baseName;
 

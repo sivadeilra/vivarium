@@ -3,6 +3,7 @@
     <Project Path="src/Vivarium/Vivarium.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Vivarium.McpTest/Vivarium.McpTest.csproj" />
     <Project Path="tests/Vivarium.TestHarness/Vivarium.TestHarness.csproj" />
   </Folder>
 </Solution>
