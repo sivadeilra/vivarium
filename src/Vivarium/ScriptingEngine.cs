@@ -23,10 +23,13 @@ public sealed class ScriptingEngine
                 typeof(Enumerable).Assembly,              // System.Linq
                 typeof(List<>).Assembly,                  // System.Collections.Generic
                 typeof(System.Text.Json.JsonSerializer).Assembly,
+                typeof(System.Text.Json.Nodes.JsonNode).Assembly,
                 typeof(System.Net.Http.HttpClient).Assembly,
                 typeof(StringBuilder).Assembly,
                 typeof(System.IO.File).Assembly,
-                typeof(System.Text.RegularExpressions.Regex).Assembly
+                typeof(System.Text.RegularExpressions.Regex).Assembly,
+                typeof(System.Xml.Linq.XDocument).Assembly,
+                typeof(DataBridge).Assembly               // Vivarium (for DataBridge)
             )
             .AddImports(
                 "System",
@@ -35,8 +38,11 @@ public sealed class ScriptingEngine
                 "System.Linq",
                 "System.Text",
                 "System.Text.Json",
+                "System.Text.Json.Nodes",
                 "System.Text.RegularExpressions",
-                "System.Threading.Tasks"
+                "System.Threading.Tasks",
+                "System.Xml.Linq",
+                "Vivarium"
             );
     }
 
@@ -212,6 +218,35 @@ public sealed class ScriptingEngine
     public void Reset()
     {
         _state = null;
+    }
+
+    /// <summary>
+    /// Inject a .NET object into the session as a named variable.
+    /// Uses DataBridge to pass the object through the scripting boundary.
+    /// </summary>
+    public async Task<EvalResult> InjectVariableAsync(string name, object value, string typeName)
+    {
+        var key = DataBridge.Put(value);
+        var code = $"var {name} = DataBridge.Take<{typeName}>(\"{key}\");";
+        return await EvalAsync(code);
+    }
+
+    /// <summary>
+    /// Evaluate an expression and return the actual .NET object (not just its ToString).
+    /// Used by write tools to retrieve session objects for serialization.
+    /// </summary>
+    public async Task<(object? Value, string? Error)> EvalObjectAsync(string expression)
+    {
+        // We need to evaluate without modifying state if it fails,
+        // but ContinueWithAsync does append to the chain regardless.
+        // Since expressions are side-effect-free in typical usage, this is acceptable.
+        var result = await EvalAsync(expression);
+        if (!result.Success)
+            return (null, result.Error);
+
+        // The return value is in _state.Variables? No — it's the ReturnValue of the state.
+        // But EvalAsync stores _state = newState, and newState.ReturnValue has the object.
+        return (_state?.ReturnValue, null);
     }
 
     private static string FormatValue(object? value)
