@@ -381,7 +381,11 @@ public sealed class VivariumTools
         try
         {
             raw = await File.ReadAllTextAsync(path);
-            node = JsonNode.Parse(raw);
+            node = JsonNode.Parse(raw, documentOptions: new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
         }
         catch (JsonException ex)
         {
