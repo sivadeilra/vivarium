@@ -39,6 +39,7 @@ builder.Services.AddSingleton(_ =>
 });
 builder.Services.AddSingleton<ScriptingEngine>();
 builder.Services.AddSingleton<BootstrapLoader>();
+builder.Services.AddSingleton<SessionLog>();
 
 // Register MCP server with stdio transport
 builder.Services

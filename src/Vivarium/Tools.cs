@@ -10,26 +10,31 @@ public sealed class VivariumTools
     private readonly ScriptingEngine _engine;
     private readonly FileStore _fileStore;
     private readonly BootstrapLoader _loader;
+    private readonly SessionLog _log;
 
-    public VivariumTools(ScriptingEngine engine, FileStore fileStore, BootstrapLoader loader)
+    public VivariumTools(ScriptingEngine engine, FileStore fileStore, BootstrapLoader loader, SessionLog log)
     {
         _engine = engine;
         _fileStore = fileStore;
         _loader = loader;
+        _log = log;
     }
 
     [McpServerTool(Name = "vivarium_eval"), Description(
         "Execute arbitrary C# code in the live Vivarium scripting session. " +
         "Variables, classes, and functions defined in prior eval calls persist. " +
-        "Returns stdout, return value (if expression), and any errors.")]
+        "Returns stdout, return value (if expression), and any errors. " +
+        "Output is truncated if it exceeds maxLines; use vivarium_log to page through full results.")]
     public async Task<string> Eval(
         [Description("C# code to execute. Can be expressions, statements, class definitions, etc.")]
         string code,
         [Description("Timeout in milliseconds (default 30000)")]
-        int timeoutMs = 30000)
+        int timeoutMs = 30000,
+        [Description("Maximum output lines before truncation (default 500)")]
+        int maxLines = SessionLog.DefaultMaxLines)
     {
         var result = await _engine.EvalAsync(code, timeoutMs);
-        return result.ToString();
+        return _log.Record("eval", code, result.ToString(), maxLines);
     }
 
     [McpServerTool(Name = "vivarium_define"), Description(
@@ -64,7 +69,7 @@ public sealed class VivariumTools
             sb.AppendLine($"Load error: {evalResult.Error}");
             sb.AppendLine("(File saved but not active in session. Fix the error and redefine.)");
         }
-        return sb.ToString();
+        return _log.Record("define", path, sb.ToString());
     }
 
     [McpServerTool(Name = "vivarium_list", ReadOnly = true), Description(
@@ -93,7 +98,7 @@ public sealed class VivariumTools
                 sb.Append($"  — {f.Description}");
             sb.AppendLine($"  (modified {f.LastModifiedUtc:yyyy-MM-dd HH:mm} UTC)");
         }
-        return sb.ToString();
+        return _log.Record("list", filter ?? "", sb.ToString());
     }
 
     [McpServerTool(Name = "vivarium_view", ReadOnly = true), Description(
@@ -117,7 +122,7 @@ public sealed class VivariumTools
         sb.AppendLine("```csharp");
         sb.AppendLine(def.Source);
         sb.AppendLine("```");
-        return sb.ToString();
+        return _log.Record("view", path, sb.ToString());
     }
 
     [McpServerTool(Name = "vivarium_delete", Destructive = true), Description(
@@ -147,7 +152,7 @@ public sealed class VivariumTools
             sb.AppendLine($"File not found: {path}");
         }
 
-        return sb.ToString();
+        return _log.Record("delete", path, sb.ToString());
     }
 
     [McpServerTool(Name = "vivarium_inspect", ReadOnly = true), Description(
@@ -165,7 +170,7 @@ public sealed class VivariumTools
         {
             sb.AppendLine($"  {v.Name} : {v.Type} = {v.ValueShort}");
         }
-        return sb.ToString();
+        return _log.Record("inspect", filter ?? "", sb.ToString());
     }
 
     [McpServerTool(Name = "vivarium_inspect_var", ReadOnly = true), Description(
@@ -190,17 +195,18 @@ public sealed class VivariumTools
             foreach (var m in detail.Members)
                 sb.AppendLine($"  {m}");
         }
-        return sb.ToString();
+        return _log.Record("inspect_var", name, sb.ToString());
     }
 
     [McpServerTool(Name = "vivarium_reset"), Description(
-        "Reset the scripting session: clear all state, then reload all Vivarium files from disk. " +
+        "Reset the scripting session: clear all state and log, then reload all Vivarium files from disk. " +
         "Use this to recover from a bad session state.")]
     public async Task<string> Reset()
     {
         _engine.Reset();
+        _log.Clear();
         var result = await _loader.LoadAllAsync();
-        return $"Session reset.\n{result}";
+        return $"Session reset. Log cleared.\n{result}";
     }
 
     [McpServerTool(Name = "vivarium_search", ReadOnly = true), Description(
@@ -218,7 +224,7 @@ public sealed class VivariumTools
         {
             sb.AppendLine($"  {h.Path}: {h.MatchLine}");
         }
-        return sb.ToString();
+        return _log.Record("search", query, sb.ToString());
     }
 
     [McpServerTool(Name = "vivarium_catalog", ReadOnly = true), Description(
@@ -267,6 +273,28 @@ public sealed class VivariumTools
             }
             sb.AppendLine();
         }
-        return sb.ToString();
+        return _log.Record("catalog", filter ?? "", sb.ToString());
+    }
+
+    [McpServerTool(Name = "vivarium_log", ReadOnly = true), Description(
+        "Access the session log of all tool invocations. Without arguments, shows recent entries. " +
+        "With an id, retrieves the full output of a specific invocation with optional line range " +
+        "and regex filtering. Use this to page through truncated output or search within results.")]
+    public string Log(
+        [Description("Log entry ID to read. Omit to list recent entries.")]
+        int? id = null,
+        [Description("Start line (1-based, inclusive). Only used with id.")]
+        int? startLine = null,
+        [Description("End line (1-based, inclusive). Only used with id.")]
+        int? endLine = null,
+        [Description("Regex pattern to filter output lines (case-insensitive). Only used with id.")]
+        string? pattern = null,
+        [Description("Maximum lines to return (default 500)")]
+        int maxLines = SessionLog.DefaultMaxLines)
+    {
+        if (id == null)
+            return _log.ListRecent();
+
+        return _log.Read(id.Value, startLine, endLine, pattern, maxLines);
     }
 }
