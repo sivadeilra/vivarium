@@ -27,6 +27,7 @@ public sealed class VivariumTools
         "Run C# code in a persistent live session. All variables, types, and usings survive across calls. " +
         "Use this to query data already in memory, transform objects, define types, or run any .NET code. " +
         "Prefer vivarium_read_* tools to load files (they're cheaper than writing File.ReadAll* in eval). " +
+        "When you know multiple queries upfront, use vivarium_eval_batch instead to save round trips. " +
         "Large output is auto-truncated; use vivarium_log to page through it.")]
     public async Task<string> Eval(
         [Description("C# code to execute. Can be expressions, statements, class definitions, etc.")]
@@ -38,6 +39,60 @@ public sealed class VivariumTools
     {
         var result = await _engine.EvalAsync(code, timeoutMs);
         return _log.Record("eval", code, result.ToString(), maxLines);
+    }
+
+    [McpServerTool(Name = "vivarium_eval_batch"), Description(
+        "Run multiple C# expressions/statements in one call, returning all results together. " +
+        "Each expression executes sequentially — later expressions can use variables defined by earlier ones. " +
+        "This saves one inference round-trip per expression compared to calling vivarium_eval repeatedly. " +
+        "Use this when you already know the sequence of queries you want to run: " +
+        "load data, filter it, aggregate it, format the answer — all in a single tool call. " +
+        "If any expression fails, subsequent expressions still execute (errors are reported inline). " +
+        "Example: [\"var lines = File.ReadAllLines(@\\\"C:\\\\log.txt\\\")\", " +
+        "\"var errors = lines.Where(l => l.Contains(\\\"error\\\")).ToList()\", " +
+        "\"errors.Count\", " +
+        "\"errors.GroupBy(e => e.Split(':')[0]).Take(5).Select(g => $\\\"{g.Key}: {g.Count()}\\\")\"]")]
+    public async Task<string> EvalBatch(
+        [Description("Array of C# expressions/statements to execute sequentially. " +
+            "Each sees the session state left by all prior expressions in this batch.")]
+        string[] expressions,
+        [Description("Timeout in milliseconds per expression (default 30000)")]
+        int timeoutMs = 30000,
+        [Description("Maximum total output lines before truncation (default 500)")]
+        int maxLines = SessionLog.DefaultMaxLines)
+    {
+        var sb = new StringBuilder();
+        var inputSummary = new StringBuilder();
+
+        for (int i = 0; i < expressions.Length; i++)
+        {
+            var expr = expressions[i];
+            var preview = expr.Length > 80 ? expr[..77] + "..." : expr;
+            inputSummary.AppendLine($"  [{i + 1}] {preview}");
+
+            sb.AppendLine($"── [{i + 1}/{expressions.Length}] ──");
+            sb.AppendLine($"> {preview}");
+
+            var result = await _engine.EvalAsync(expr, timeoutMs);
+
+            if (result.Success)
+            {
+                if (!string.IsNullOrEmpty(result.Stdout))
+                    sb.Append(result.Stdout);
+                if (result.ReturnValue != null)
+                    sb.AppendLine(result.ReturnValue);
+                else if (string.IsNullOrEmpty(result.Stdout))
+                    sb.AppendLine("(ok)");
+            }
+            else
+            {
+                sb.AppendLine($"ERROR: {result.Error}");
+            }
+
+            sb.AppendLine();
+        }
+
+        return _log.Record("eval_batch", inputSummary.ToString(), sb.ToString(), maxLines);
     }
 
     [McpServerTool(Name = "vivarium_define"), Description(
