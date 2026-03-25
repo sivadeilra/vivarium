@@ -14,6 +14,16 @@ public sealed class SessionLog
     private readonly List<LogEntry> _entries = [];
     private int _nextId = 1;
 
+    // Tracks files loaded via read_json that contained comments or trailing commas.
+    // Keyed by normalized (full, case-insensitive) path.
+    private readonly HashSet<string> _jsonTriviaFiles = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Record that a JSON file contained trivia (comments, trailing commas).</summary>
+    public void MarkJsonTrivia(string fullPath) => _jsonTriviaFiles.Add(fullPath);
+
+    /// <summary>Check whether a file was loaded with trivia that would be lost on rewrite.</summary>
+    public bool HasJsonTrivia(string fullPath) => _jsonTriviaFiles.Contains(fullPath);
+
     /// <summary>
     /// Record a tool invocation and its full output. Returns the (possibly truncated) output
     /// along with the log entry ID header.
@@ -142,6 +152,7 @@ public sealed class SessionLog
     {
         lock (_entries)
             _entries.Clear();
+        _jsonTriviaFiles.Clear();
     }
 
     private static string FormatOutput(LogEntry entry, int maxLines)

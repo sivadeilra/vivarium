@@ -399,9 +399,17 @@ public sealed class VivariumTools
         if (!result.Success)
             return _log.Record("read_json", path, $"Failed to inject variable: {result.Error}");
 
+        // Detect trivia (comments, trailing commas) that would be lost on round-trip
+        bool hasTrivia = raw.Contains("//") || raw.Contains("/*") ||
+            System.Text.RegularExpressions.Regex.IsMatch(raw, @",\s*[}\]]");
+        if (hasTrivia)
+            _log.MarkJsonTrivia(Path.GetFullPath(path));
+
         var sb = new StringBuilder();
         sb.AppendLine($"Loaded {path} into `{variableName}` (JsonNode)");
         sb.AppendLine($"  {raw.Length:N0} chars");
+        if (hasTrivia)
+            sb.AppendLine("  ⚠ File contains comments or trailing commas. These will be lost if you rewrite it with vivarium_write_json.");
         sb.Append("  Root: ");
         if (node is JsonObject obj)
         {
@@ -628,6 +636,10 @@ var {variableName} = __raw.Select(o => {{
         [Description("Pretty-print with indentation (default true)")]
         bool indented = true)
     {
+        // Warn if this file was loaded with trivia that will be lost
+        var fullPath = Path.GetFullPath(path);
+        bool triviaWarning = _log.HasJsonTrivia(fullPath);
+
         var (value, error) = await _engine.EvalObjectAsync(expression);
         if (error != null)
             return _log.Record("write_json", $"{path} ← {expression}", $"Expression error: {error}");
@@ -648,8 +660,12 @@ var {variableName} = __raw.Select(o => {{
         if (dir != null) Directory.CreateDirectory(dir);
         await File.WriteAllTextAsync(path, json);
 
-        return _log.Record("write_json", $"{path} ← {expression}",
-            $"Wrote {json.Length:N0} chars to {path} ({(indented ? "indented" : "compact")})");
+        var msg = $"Wrote {json.Length:N0} chars to {path} ({(indented ? "indented" : "compact")})";
+        if (triviaWarning)
+            msg += "\n⚠ WARNING: This file previously contained comments or trailing commas that have been stripped. " +
+                   "The original trivia is not recoverable from the parsed JsonNode.";
+
+        return _log.Record("write_json", $"{path} ← {expression}", msg);
     }
 
     [McpServerTool(Name = "vivarium_write_csv"), Description(
