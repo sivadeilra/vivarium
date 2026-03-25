@@ -1,0 +1,23 @@
+# Build outputs
+bin/
+obj/
+publish/
+
+# .NET
+*.user
+*.suo
+*.userprefs
+*.nupkg
+*.snupkg
+
+# IDE
+.vs/
+*.sln.docstates
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Vivarium runtime
+.vivarium/log.jsonl
