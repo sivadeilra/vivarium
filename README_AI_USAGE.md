@@ -37,7 +37,7 @@ Vivarium has two layers:
   across calls. Lost on server restart.
 
 - **Files (disk):** When you `define` a file, it's saved under
-  `.vivarium/project/` and automatically reloaded on restart. Use `define`
+  `.vivarium/src/` and automatically reloaded on restart. Use `define`
   for anything you want to keep.
 
 **Use `eval` for throwaway exploration. Use `define` for reusable tools.**

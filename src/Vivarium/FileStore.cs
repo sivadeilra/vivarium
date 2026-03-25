@@ -1,7 +1,7 @@
 namespace Vivarium;
 
 /// <summary>
-/// Manages the .vivarium/project/ directory: scanning, reading, writing, and deleting
+/// Manages the .vivarium/src/ directory: scanning, reading, writing, and deleting
 /// Vivarium source files identified by the //@VIVARIUM@ header marker.
 /// </summary>
 public sealed class FileStore
@@ -9,7 +9,7 @@ public sealed class FileStore
     public const string HeaderMarker = "//@VIVARIUM@";
 
     private readonly string _root;  // e.g. c:\workspace\.vivarium
-    private string ProjectDir => Path.Combine(_root, "project");
+    private string ProjectDir => Path.Combine(_root, "src");
 
     public FileStore(string root)
     {
@@ -19,7 +19,7 @@ public sealed class FileStore
     public string Root => _root;
 
     /// <summary>
-    /// Ensure the .vivarium/project/ directory exists.
+    /// Ensure the .vivarium/src/ directory exists.
     /// </summary>
     public void EnsureDirectories()
     {

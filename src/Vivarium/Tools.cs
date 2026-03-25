@@ -100,7 +100,7 @@ public sealed class VivariumTools
         "Use this for classes, utilities, and functions you'll call more than once. " +
         "Files persist across restarts. Public symbols are auto-extracted as @exports: metadata.")]
     public async Task<string> Define(
-        [Description("Relative path under .vivarium/project/, e.g. 'Utils/Math.cs' or 'Helpers.cs'")]
+        [Description("Relative path under .vivarium/src/, e.g. 'Utils/Math.cs' or 'Helpers.cs'")]
         string path,
         [Description("Full C# source code. The //@VIVARIUM@ header is auto-added if missing. " +
             "Use //@description:, //@depends: OtherFile.cs metadata comments for organization.")]

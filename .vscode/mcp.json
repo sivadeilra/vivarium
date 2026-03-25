@@ -1,0 +1,8 @@
+{
+    "servers":  {
+        "vivarium": {
+            "command": "C:\\vivarium\\src\\Vivarium\\bin\\Debug\\net10.0\\Vivarium.exe",
+            "type": "stdio"
+        }
+    }
+}

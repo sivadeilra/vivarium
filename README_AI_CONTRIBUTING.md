@@ -12,7 +12,7 @@ All production code is in `src/Vivarium/` (6 files):
 |---|---|---|
 | `Program.cs` | Server entry point. Configures DI, MCP stdio transport, resolves `.vivarium` root, triggers bootstrap. | — |
 | `ScriptingEngine.cs` | Wraps Roslyn scripting. Maintains the `ScriptState` chain. Captures stdout/stderr. Returns `EvalResult`. | `ScriptingEngine`, `EvalResult`, `VariableInfo`, `VariableDetail` |
-| `FileStore.cs` | Manages `.vivarium/project/` directory. File CRUD, metadata parsing, dependency search. | `FileStore`, `DefinitionFile`, `SearchHit` |
+| `FileStore.cs` | Manages `.vivarium/src/` directory. File CRUD, metadata parsing, dependency search. | `FileStore`, `DefinitionFile`, `SearchHit` |
 | `BootstrapLoader.cs` | On startup, reads all files from `FileStore`, topologically sorts by `@depends`, and executes them into the engine. | `BootstrapLoader` |
 | `SymbolExtractor.cs` | At define-time, parses source with Roslyn and extracts public class/method names for `@exports:` metadata. | `SymbolExtractor` (static) |
 | `Tools.cs` | All MCP tool handlers. Each method is an `[McpServerTool]`. This is the MCP surface area. | `VivariumTools` |
