@@ -60,6 +60,19 @@ public sealed class FileStore
     /// </summary>
     public DefinitionFile Write(string relativePath, string source)
     {
+        return WriteCore(relativePath, source, exports: null);
+    }
+
+    /// <summary>
+    /// Write a definition file and inject/update the @exports: metadata line.
+    /// </summary>
+    public DefinitionFile WriteWithExports(string relativePath, string source, IEnumerable<string> exports)
+    {
+        return WriteCore(relativePath, source, exports);
+    }
+
+    private DefinitionFile WriteCore(string relativePath, string source, IEnumerable<string>? exports)
+    {
         var fullPath = ResolvePath(relativePath);
 
         // Security: ensure resolved path is under ProjectDir
@@ -71,8 +84,36 @@ public sealed class FileStore
 
         // Ensure header is present
         if (!source.TrimStart().StartsWith(HeaderMarker))
-        {
             source = HeaderMarker + "\n" + source;
+
+        // Inject or update @exports: line if provided
+        if (exports != null)
+        {
+            var exportList = exports.ToList();
+            if (exportList.Count > 0)
+            {
+                var exportsLine = "//@exports: " + string.Join(", ", exportList);
+                var lines = source.Split('\n').ToList();
+
+                // Find existing @exports: line and replace, or insert after last @@ line
+                int existingIdx = lines.FindIndex(l => l.Trim().StartsWith("//@exports:"));
+                if (existingIdx >= 0)
+                {
+                    lines[existingIdx] = exportsLine;
+                }
+                else
+                {
+                    // Insert after the last //@... metadata line
+                    int lastMeta = 0;
+                    for (int i = 0; i < lines.Count; i++)
+                    {
+                        if (lines[i].Trim().StartsWith("//@")) lastMeta = i;
+                        else if (!string.IsNullOrWhiteSpace(lines[i])) break;
+                    }
+                    lines.Insert(lastMeta + 1, exportsLine);
+                }
+                source = string.Join('\n', lines);
+            }
         }
 
         File.WriteAllText(resolvedFull, source);
@@ -169,6 +210,7 @@ public sealed class FileStore
         // Parse metadata from header comments
         string? description = null;
         var dependencies = new List<string>();
+        var exports = new List<string>();
         var lines = content.Split('\n');
 
         foreach (var line in lines)
@@ -181,6 +223,12 @@ public sealed class FileStore
                 var deps = trimmed["//@depends:".Length..].Trim();
                 dependencies.AddRange(
                     deps.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            }
+            else if (trimmed.StartsWith("//@exports:"))
+            {
+                var exp = trimmed["//@exports:".Length..].Trim();
+                exports.AddRange(
+                    exp.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
             }
             else if (!trimmed.StartsWith("//@") && !string.IsNullOrWhiteSpace(trimmed))
                 break; // stop parsing metadata after first non-metadata line
@@ -196,6 +244,7 @@ public sealed class FileStore
             Body = body,
             Description = description,
             Dependencies = dependencies,
+            Exports = exports,
             LastModifiedUtc = lastModified
         };
     }
@@ -230,6 +279,7 @@ public class DefinitionFile
     public required string Body { get; set; }  // source without header metadata
     public string? Description { get; set; }
     public List<string> Dependencies { get; set; } = [];
+    public List<string> Exports { get; set; } = [];  // auto-extracted public symbols
     public DateTime LastModifiedUtc { get; set; }
 }
 

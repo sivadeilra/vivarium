@@ -35,19 +35,24 @@ public sealed class VivariumTools
     [McpServerTool(Name = "vivarium_define"), Description(
         "Create or update a Vivarium source file and execute it in the live session. " +
         "The file is persisted under .vivarium/project/ and survives restarts. " +
-        "Use this to build up reusable functions, classes, and utilities.")]
+        "Use this to build up reusable functions, classes, and utilities. " +
+        "Public symbols are automatically extracted and stored as @exports: metadata.")]
     public async Task<string> Define(
         [Description("Relative path under .vivarium/project/, e.g. 'Utils/Math.cs' or 'Helpers.cs'")]
         string path,
         [Description("Full C# source code. The //@VIVARIUM@ header is auto-added if missing. " +
-            "Use //@description: and //@depends: OtherFile.cs metadata comments for organization.")]
+            "Use //@description:, //@depends: OtherFile.cs metadata comments for organization.")]
         string source)
     {
-        var def = _fileStore.Write(path, source);
+        // Auto-extract exported public symbols and inject into file header
+        var exports = SymbolExtractor.ExtractExports(source);
+        var def = _fileStore.WriteWithExports(path, source, exports);
         var evalResult = await _engine.EvalAsync(def.Body);
 
         var sb = new StringBuilder();
         sb.AppendLine($"Saved: {def.RelativePath}");
+        if (exports.Count > 0)
+            sb.AppendLine($"Exports: {string.Join(", ", exports)}");
         if (evalResult.Success)
         {
             sb.AppendLine("Loaded into session: OK");
@@ -212,6 +217,55 @@ public sealed class VivariumTools
         foreach (var h in hits)
         {
             sb.AppendLine($"  {h.Path}: {h.MatchLine}");
+        }
+        return sb.ToString();
+    }
+
+    [McpServerTool(Name = "vivarium_catalog", ReadOnly = true), Description(
+        "Show a rich catalog of all Vivarium definitions: descriptions, exports, and dependencies. " +
+        "Use this at the start of a session to understand what tools and utilities are available.")]
+    public string Catalog(
+        [Description("Optional filter on path (substring match)")]
+        string? filter = null)
+    {
+        var files = _fileStore.ScanAll();
+
+        if (!string.IsNullOrEmpty(filter))
+            files = files.Where(f => f.RelativePath.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (files.Count == 0)
+            return "No Vivarium files found.";
+
+        // Group by directory
+        var grouped = files
+            .OrderBy(f => f.RelativePath)
+            .GroupBy(f =>
+            {
+                var slash = f.RelativePath.LastIndexOf('/');
+                return slash < 0 ? "(root)" : f.RelativePath[..slash];
+            });
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Vivarium Library — {files.Count} file(s)\n");
+
+        foreach (var group in grouped)
+        {
+            sb.AppendLine($"[{group.Key}]");
+            foreach (var f in group)
+            {
+                var name = Path.GetFileName(f.RelativePath);
+                sb.Append($"  {name}");
+                if (f.Description != null)
+                    sb.Append($" — {f.Description}");
+                sb.AppendLine();
+
+                if (f.Exports.Count > 0)
+                    sb.AppendLine($"    exports:  {string.Join(", ", f.Exports)}");
+                if (f.Dependencies.Count > 0)
+                    sb.AppendLine($"    depends:  {string.Join(", ", f.Dependencies)}");
+                sb.AppendLine($"    modified: {f.LastModifiedUtc:yyyy-MM-dd HH:mm} UTC");
+            }
+            sb.AppendLine();
         }
         return sb.ToString();
     }
