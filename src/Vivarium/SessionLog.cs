@@ -13,6 +13,7 @@ public sealed class SessionLog
 
     private readonly List<LogEntry> _entries = [];
     private int _nextId = 1;
+    private StreamWriter? _diskLog;
 
     // Tracks files loaded via read_json that contained comments or trailing commas.
     // Keyed by normalized (full, case-insensitive) path.
@@ -23,6 +24,29 @@ public sealed class SessionLog
 
     /// <summary>Check whether a file was loaded with trivia that would be lost on rewrite.</summary>
     public bool HasJsonTrivia(string fullPath) => _jsonTriviaFiles.Contains(fullPath);
+
+    /// <summary>
+    /// Initialize disk logging to .vivarium/logs/viv-YYYY-MM-DD.log.
+    /// Appends to existing file if one exists for today.
+    /// </summary>
+    public void InitDiskLog(string vivariumRoot)
+    {
+        try
+        {
+            var logsDir = Path.Combine(vivariumRoot, "logs");
+            Directory.CreateDirectory(logsDir);
+            var logPath = Path.Combine(logsDir, $"viv-{DateTime.UtcNow:yyyy-MM-dd}.log");
+            _diskLog = new StreamWriter(logPath, append: true, Encoding.UTF8) { AutoFlush = true };
+            _diskLog.WriteLine($"\n{new string('═', 72)}");
+            _diskLog.WriteLine($"Session started at {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+            _diskLog.WriteLine(new string('═', 72));
+        }
+        catch
+        {
+            // Non-fatal — disk logging is best-effort
+            _diskLog = null;
+        }
+    }
 
     /// <summary>
     /// Record a tool invocation and its full output. Returns the (possibly truncated) output
@@ -41,6 +65,8 @@ public sealed class SessionLog
 
         lock (_entries)
             _entries.Add(entry);
+
+        WriteToDisk(entry);
 
         return FormatOutput(entry, maxLines);
     }
@@ -153,6 +179,24 @@ public sealed class SessionLog
         lock (_entries)
             _entries.Clear();
         _jsonTriviaFiles.Clear();
+        _diskLog?.WriteLine($"\n── session reset at {DateTime.UtcNow:HH:mm:ss} UTC ──\n");
+    }
+
+    private void WriteToDisk(LogEntry entry)
+    {
+        if (_diskLog == null) return;
+        try
+        {
+            _diskLog.WriteLine($"\n┌─ #{entry.Id} [{entry.ToolName}] {entry.Timestamp:HH:mm:ss} UTC ─");
+            _diskLog.WriteLine($"│ input: {entry.Input}");
+            _diskLog.WriteLine($"├─ output ─");
+            _diskLog.WriteLine(entry.FullOutput);
+            _diskLog.WriteLine($"└─");
+        }
+        catch
+        {
+            // Non-fatal
+        }
     }
 
     private static string FormatOutput(LogEntry entry, int maxLines)

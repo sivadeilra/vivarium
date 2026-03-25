@@ -62,6 +62,10 @@ var loader = host.Services.GetRequiredService<BootstrapLoader>();
 
 logger.LogInformation("Vivarium starting. Root: {Root}", vivariumRoot);
 
+// Initialize disk logging
+var sessionLog = host.Services.GetRequiredService<SessionLog>();
+sessionLog.InitDiskLog(vivariumRoot);
+
 var bootstrapResult = await loader.LoadAllAsync();
 if (bootstrapResult.Loaded.Count > 0)
     logger.LogInformation("Bootstrap: loaded {Count} file(s)", bootstrapResult.Loaded.Count);
